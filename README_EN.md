@@ -3,10 +3,10 @@
 **An encrypted, personal-context vault. The key always stays in your hands.**
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/54wu/omnivault" alt="license"></a>
-  <a href="https://github.com/54wu/omnivault/releases"><img src="https://img.shields.io/github/v/release/54wu/omnivault" alt="release"></a>
-  <a href="https://github.com/54wu/omnivault/actions"><img src="https://img.shields.io/github/actions/workflow/status/54wu/omnivault/release.yml" alt="ci"></a>
-  <img src="https://img.shields.io/github/go-mod/go-version/54wu/omnivault" alt="go">
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/54wu/omnivault?v=1" alt="license"></a>
+  <a href="https://github.com/54wu/omnivault/releases"><img src="https://img.shields.io/github/v/release/54wu/omnivault?v=1" alt="release"></a>
+  <a href="https://github.com/54wu/omnivault/actions"><img src="https://img.shields.io/github/actions/workflow/status/54wu/omnivault/release.yml?v=1" alt="ci"></a>
+  <img src="https://img.shields.io/github/go-mod/go-version/54wu/omnivault?v=1" alt="go">
 </p>
 
 ---
