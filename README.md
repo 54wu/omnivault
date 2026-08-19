@@ -2,6 +2,13 @@
 
 **加密的个人上下文档案袋。钥匙永远在你手里。**
 
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/54wu/omnivault" alt="license"></a>
+  <a href="https://github.com/54wu/omnivault/releases"><img src="https://img.shields.io/github/v/release/54wu/omnivault" alt="release"></a>
+  <a href="https://github.com/54wu/omnivault/actions"><img src="https://img.shields.io/github/actions/workflow/status/54wu/omnivault/release.yml" alt="ci"></a>
+  <img src="https://img.shields.io/github/go-mod/go-version/54wu/omnivault" alt="go">
+</p>
+
 ---
 
 你的人生只需填写一次。之后每位 AI 代理都从完整上下文开始，而不是一张白纸。
@@ -32,7 +39,7 @@ OmniVault 存储你的身份、文档、人际、财务、地址和偏好——�
 5. [命令行 CLI](#命令行-cli)
 6. [材料合并 Merge（三层分级）](#材料合并-merge三层分级)
 7. [加密原理（安全模型）](#加密原理安全模型)
-8. [跨设备同步（云同步 + 密钥分离）](#跨设备同步云同步--密钥分离)
+8. [跨设备同步（云同步 + 密钥分离）](#跨设备同步云同步-密钥分离)
 9. [版本化自动备份与回档](#版本化自动备份与回档)
 10. [HTTP API](#http-api)
 11. [附件](#附件)
@@ -53,7 +60,9 @@ OmniVault 存储你的身份、文档、人际、财务、地址和偏好——�
 24. [常见问题 FAQ](#常见问题-faq)
 25. [协议](#协议)
 26. [致谢](#致谢)
-27. [许可证](#许可证)
+27. [贡献指南](#贡献指南-contributing)
+28. [安全说明](#安全说明-security)
+29. [许可证](#许可证)
 
 ---
 
@@ -925,6 +934,48 @@ make test    # 开启竞态检测（go test -v -race ./...）
 ## 致谢
 
 本项目基于 **[Personal Vault](https://github.com/54wu/personal-vault)** 项目开发，并在其基础上进行了品牌更名（OmniVault · 万象档案袋）、界面重构（单进程 WebView2 原生窗口）、功能扩展（版本化自动备份与回档、附件、服务令牌、材料合并、多人员档案袋等）。在此对原项目及其作者表示诚挚感谢。
+
+---
+
+## 贡献指南 Contributing
+
+欢迎任何形式的贡献——修 Bug、补文档、写测试、加特性。动手前请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 与 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)。
+
+**快速开始**
+
+1. Fork 本项目，从 `main` 拉出一条 `feat/xxx` 或 `fix/xxx` 分支。
+2. 需要 **Go 1.26+**。克隆后先 `go build ./...` 确认可编译。
+3. 遵循 `gofmt`，为新逻辑补测试并确保 `make test`（`go test -race ./...`）全绿。
+4. 使用语义化提交信息（`feat:` / `fix:` / `docs:` / `test:` …），向 `main` 提交 Pull Request。
+
+**Issue 与交流**
+
+- 提问、想法与讨论：[Discussions](https://github.com/54wu/omnivault/discussions)
+- Bug 报告与功能请求：[Issues](https://github.com/54wu/omnivault/issues)
+- 发现**安全漏洞请勿公开**，按下方 [安全说明](#安全说明-security) 的私有渠道上报。
+
+**发布节奏**
+
+发布由维护者负责：合并到 `main` 后打 `vX.Y.Z` 标签即可（见上「发布（Release）」，CI 会自动产出各平台安装包）。
+
+---
+
+## 安全说明 Security
+
+OmniVault 围绕“逐字段加密 + 零知识 + 密钥永不离机”设计：
+
+- 字段级 **AES-256-GCM**，密码经 **Argon2id** 派生、**HKDF** 展开为子密钥。
+- 档案密码从不落盘；解锁期间密钥仅存于内存。
+- `secret.key` 与 `vault.db` 分离存放，建议单独加密备份。
+- 本地服务默认监听 `127.0.0.1`，令牌有作用域并设有效期。
+
+加密原理与安全模型的完整说明，见上文「[加密原理](#加密原理安全模型)」与「[跨设备同步](#跨设备同步云同步-密钥分离)」。
+
+**报告漏洞**：请**不要**在公开 Issue / 讨论中暴露细节，请通过 GitHub **私有漏洞报告（Security Advisory）** 提交——
+
+[Private vulnerability reporting](https://github.com/54wu/omnivault/security/advisories)
+
+我们会对漏洞及时评估、严格保密，并在修复发布后（经你同意）于致谢中署名。完整政策见 [SECURITY.md](./SECURITY.md)。
 
 ---
 

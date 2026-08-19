@@ -2,6 +2,13 @@
 
 **An encrypted, personal-context vault. The key always stays in your hands.**
 
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/54wu/omnivault" alt="license"></a>
+  <a href="https://github.com/54wu/omnivault/releases"><img src="https://img.shields.io/github/v/release/54wu/omnivault" alt="release"></a>
+  <a href="https://github.com/54wu/omnivault/actions"><img src="https://img.shields.io/github/actions/workflow/status/54wu/omnivault/release.yml" alt="ci"></a>
+  <img src="https://img.shields.io/github/go-mod/go-version/54wu/omnivault" alt="go">
+</p>
+
 ---
 
 Fill in your life once. After that, every AI agent starts from full context, not a blank page.
@@ -53,7 +60,9 @@ This README is the **complete reference** for the project: from features, instal
 24. [FAQ](#faq)
 25. [Protocol](#protocol)
 26. [Credits](#credits)
-27. [License](#license)
+27. [Contributing](#contributing)
+28. [Security](#security)
+29. [License](#license)
 
 ---
 
@@ -915,6 +924,48 @@ This project is a **reference implementation** of the **[Personal Context Protoc
 ## Credits
 
 This project is developed on top of **[Personal Vault](https://github.com/54wu/personal-vault)** and extends it with a rebrand (OmniVault · 万象档案袋), a rebuilt single-process WebView2 native UI, and additional features (versioned automatic backups & rollback, attachments, service tokens, material merge, multi-person dossiers, etc.). Our sincere thanks to the original project and its author.
+
+---
+
+## Contributing
+
+All kinds of contributions are welcome — bug fixes, docs, tests, features. Before you start, please read [CONTRIBUTING.md](./CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
+
+**Quick start**
+
+1. Fork this repository and branch off `main` as `feat/xxx` or `fix/xxx`.
+2. You'll need **Go 1.26+**. After cloning, `go build ./...` should compile.
+3. Keep code `gofmt`-clean, add tests for new logic, and make sure `make test` (`go test -race ./...`) is green.
+4. Use semantic commit messages (`feat:` / `fix:` / `docs:` / `test:` …) and open a Pull Request against `main`.
+
+**Issues & discussion**
+
+- Questions, ideas & discussion: [Discussions](https://github.com/54wu/omnivault/discussions)
+- Bug reports & feature requests: [Issues](https://github.com/54wu/omnivault/issues)
+- If you've found a **security vulnerability, do not post it publicly** — use the private channel below (see [Security](#security)).
+
+**Release cadence**
+
+Releases are cut by maintainers: after merging to `main`, tag `vX.Y.Z` (see [Release](#release)); CI (goreleaser) automatically produces installers for every platform.
+
+---
+
+## Security
+
+OmniVault is designed around **field-level encryption + zero-knowledge + the key never leaves your machine**:
+
+- Per-field **AES-256-GCM**; the password is stretched with **Argon2id** and expanded into per-field subkeys via **HKDF**.
+- The vault password is never written to disk; the key lives only in memory while unlocked.
+- `secret.key` is stored separately from `vault.db` — keep a separate, encrypted backup.
+- The local server listens on `127.0.0.1` by default; tokens are scoped and expire.
+
+A full walkthrough of the crypto model lives in [Encryption (security model)](#encryption-security-model) and [Cross-device sync (cloud sync + key separation)](#cross-device-sync).
+
+**Reporting a vulnerability**: please **do not expose details in public Issues/discussions**. Use GitHub's **private vulnerability reporting**:
+
+[Private vulnerability reporting](https://github.com/54wu/omnivault/security/advisories)
+
+We triage reports promptly, keep them confidential, and — with your consent — credit you in the acknowledgements once a fix ships. The full policy is in [SECURITY.md](./SECURITY.md).
 
 ---
 
