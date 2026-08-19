@@ -935,6 +935,8 @@ make test    # 开启竞态检测（go test -v -race ./...）
 
 本项目基于 **[Personal Vault](https://github.com/54wu/personal-vault)** 项目开发，并在其基础上进行了品牌更名（OmniVault · 万象档案袋）、界面重构（单进程 WebView2 原生窗口）、功能扩展（版本化自动备份与回档、附件、服务令牌、材料合并、多人员档案袋等）。在此对原项目及其作者表示诚挚感谢。
 
+开发过程中还得到了 **Trae Work**（AI 开发环境）的协助——涉及界面原型、调试与文档撰写，特此致谢。
+
 ---
 
 ## 贡献指南 Contributing
