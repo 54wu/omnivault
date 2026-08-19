@@ -9,6 +9,12 @@
   <img src="https://img.shields.io/github/go-mod/go-version/54wu/omnivault?v=1" alt="go">
 </p>
 
+## Interface Preview
+
+![Interface demo](assets/demo.png)
+
+<video controls width="720" src="assets/demo.mp4"></video>
+
 ---
 
 Fill in your life once. After that, every AI agent starts from full context, not a blank page.

@@ -20,3 +20,6 @@ mcp/node_modules/
 mcp/dist/
 examples/*/node_modules/
 .vercel
+
+# 避免误推原始大视频
+assets/demo_original.mp4

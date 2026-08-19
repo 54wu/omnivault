@@ -9,6 +9,12 @@
   <img src="https://img.shields.io/github/go-mod/go-version/54wu/omnivault?v=1" alt="go">
 </p>
 
+## 界面预览
+
+![界面演示](assets/demo.png)
+
+<video controls width="720" src="assets/demo.mp4"></video>
+
 ---
 
 你的人生只需填写一次。之后每位 AI 代理都从完整上下文开始，而不是一张白纸。
