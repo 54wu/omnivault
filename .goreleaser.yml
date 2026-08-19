@@ -1,0 +1,39 @@
+version: 2
+
+builds:
+  - main: ./cmd/omnivault
+    binary: omnivault
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # rsrc_windows_amd64.syso carries the icon/version on windows/amd64 via its
+    # file-name build tag, so no extra hook is needed. Other GOOS/GOARCH
+    # combinations simply ignore it. arm64 for windows is rare; skip it.
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: main
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+release:
+  github:
+    owner: 54wu
+    name: omnivault

@@ -1,0 +1,32 @@
+{
+  "name": "omnivault-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for OmniVault — exposes encrypted personal context to AI agents",
+  "type": "module",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "bin": {
+    "omnivault-mcp": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc && chmod +x dist/index.js",
+    "prepare": "npm run build",
+    "dev": "npx tsx src/index.ts"
+  },
+  "keywords": ["mcp", "model-context-protocol", "omnivault", "vault"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/54wu/omnivault.git",
+    "directory": "mcp"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
