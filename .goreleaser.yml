@@ -28,6 +28,10 @@ archives:
     files:
       - LICENSE
       - README.md
+  # 额外发布一个"裸二进制/单 exe"：Windows 可得 OmniVault_<ver>_windows_amd64.exe 直接下载即用
+  - id: bare
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: binary
 
 checksum:
   name_template: checksums.txt

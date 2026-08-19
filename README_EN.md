@@ -925,6 +925,8 @@ This project is a **reference implementation** of the **[Personal Context Protoc
 
 This project is developed on top of **[Personal Vault](https://github.com/54wu/personal-vault)** and extends it with a rebrand (OmniVault · 万象档案袋), a rebuilt single-process WebView2 native UI, and additional features (versioned automatic backups & rollback, attachments, service tokens, material merge, multi-person dossiers, etc.). Our sincere thanks to the original project and its author.
 
+Development was also assisted by **Trae Work** (AI coding environment) — UI prototyping, debugging and documentation. Our thanks.
+
 ---
 
 ## Contributing
