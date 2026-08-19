@@ -1,0 +1,47 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": [
+		"../assets/omnivault-icon.png"
+      ]
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0409": {
+        "fixed": {
+          "file_version": "26.8.14.0",
+          "product_version": "26.8.14.0",
+          "file_os": "VOS_NT_WINDOWS32",
+          "file_type": "VFT_APP"
+        },
+        "info": {
+          "0409": {
+            "CompanyName": "OmniVault",
+            "ProductName": "OmniVault / 万象档案袋",
+            "FileDescription": "OmniVault / 万象档案袋 - encrypted personal data vault",
+            "FileVersion": "26.8.14.0",
+            "ProductVersion": "26.8.14.0",
+            "OriginalFilename": "omnivault.exe",
+            "InternalName": "omnivault"
+          }
+        }
+      }
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0000": {
+        "identity": {
+          "name": "OmniVault",
+          "version": "26.8.14.0"
+        },
+        "description": "OmniVault / 万象档案袋 - encrypted personal data vault",
+        "minimum-os": "vista",
+        "execution-level": "asInvoker",
+        "ui-access": false,
+        "dpi-awareness": "perMonitorV2"
+      }
+    }
+  }
+}

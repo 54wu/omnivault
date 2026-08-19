@@ -1,0 +1,32 @@
+# 行尾与二进制类型规范
+* text=auto
+
+# 源码/脚本统一 LF
+*.go   text eol=lf
+*.ts   text eol=lf
+*.js   text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.py   text eol=lf
+*.sh   text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+Makefile text eol=lf
+
+# Windows 脚本保留 CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# 二进制资源
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.syso binary
+*.exe  binary
+*.db   binary
+*.db-wal binary
+*.db-shm binary
+*.enc  binary

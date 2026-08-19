@@ -1,0 +1,22 @@
+.DS_Store
+coverage.out
+bin/
+# Built executables (build.ps1 / 首次使用.ps1 / FirstRun.ps1 output these to the repo root)
+OmniVault.exe
+omnivault.exe
+*.exe
+*.db
+*.db-wal
+*.db-shm
+.vault/
+# Local vault data directory (secret.key, vault.db, ui-data, backups)
+personal data/
+.session
+*.enc
+docs/brainstorms/
+docs/plans/
+docs/design-philosophy.md
+mcp/node_modules/
+mcp/dist/
+examples/*/node_modules/
+.vercel
