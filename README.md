@@ -13,7 +13,7 @@
 
 ![界面演示](assets/demo.png)
 
-<video controls width="720" src="assets/demo.mp4"></video>
+<video controls width="720" src="https://raw.githubusercontent.com/54wu/omnivault/main/assets/demo.mp4"></video>
 
 ---
 
