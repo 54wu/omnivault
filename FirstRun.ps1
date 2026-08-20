@@ -180,14 +180,22 @@ function Create-DesktopShortcut([string]$Exe, [string]$Root) {
         return
     }
     try {
+        # Point the shortcut at the launcher script, not the bare exe, so the data dir
+        # (vault.db / secret.key) resolves to the same-level .\personal data. Pointing
+        # directly at the exe loses VAULT_DIR (a .lnk cannot carry env vars), which falls
+        # back to ~/.omnivault and is misdetected as "fresh -> create new password".
+        $ps1 = if ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { $PSCommandPath }
+        $pwsh = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $ws = New-Object -ComObject WScript.Shell
         $lnk = $ws.CreateShortcut((Join-Path $desktop 'OmniVault.lnk'))
-        $lnk.TargetPath = $Exe
+        $lnk.TargetPath = $pwsh
+        $lnk.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $ps1 + '"'
         $lnk.WorkingDirectory = $Root
         $lnk.IconLocation = "$Exe,0"
         $lnk.Description = 'OmniVault'
+        $lnk.WindowStyle = 7
         $lnk.Save()
-        Write-Step 'Desktop shortcut created'
+        Write-Step 'Desktop shortcut created (points at the launcher script, behavior identical to running the script)'
     } catch { Write-Warning "Failed to create desktop shortcut: $_" }
 }
 

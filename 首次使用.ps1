@@ -174,14 +174,21 @@ function Create-DesktopShortcut([string]$Exe, [string]$Root) {
         return
     }
     try {
+        # 快捷方式指向“唯一入口脚本”而非裸 exe：如此数据目录(vault.db)与密钥
+        # (secret.key) 都按脚本解析为同级 .\personal data。若直连 exe，快捷方式无法
+        # 携带 VAULT_DIR，双击会落回 ~/.omnivault 而误判为“全新 → 新建密码”。
+        $ps1 = if ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { $PSCommandPath }
+        $pwsh = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $ws = New-Object -ComObject WScript.Shell
         $lnk = $ws.CreateShortcut((Join-Path $desktop 'OmniVault.lnk'))
-        $lnk.TargetPath = $Exe
+        $lnk.TargetPath = $pwsh
+        $lnk.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $ps1 + '"'
         $lnk.WorkingDirectory = $Root
         $lnk.IconLocation = "$Exe,0"
         $lnk.Description = 'OmniVault / 万象档案袋'
+        $lnk.WindowStyle = 7
         $lnk.Save()
-        Write-Step '已在桌面创建 OmniVault 快捷方式'
+        Write-Step '已在桌面创建 OmniVault 快捷方式（指向唯一入口脚本，行为与直接运行脚本一致）'
     } catch { Write-Warning "创建桌面快捷方式失败：$_" }
 }
 
