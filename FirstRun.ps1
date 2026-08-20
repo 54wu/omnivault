@@ -68,6 +68,35 @@ function Save-VaultDir([string]$dir) {
     }
 }
 
+# Convert an absolute path to a same-level relative address (.\personal data) when it lives
+# under the script directory; otherwise return it unchanged. Used for display and persistence.
+function To-RelativeVaultDir([string]$abs) {
+    if (-not $abs) { return $abs }
+    $abs = $abs.Trim()
+    $rootTrim = $root.TrimEnd('\')
+    if ($abs.TrimEnd('\') -ieq $rootTrim) { return '.\' }
+    $prefix = $rootTrim + '\'
+    if ($abs.ToLowerInvariant().StartsWith($prefix.ToLowerInvariant())) {
+        return '.\' + $abs.Substring($prefix.Length)
+    }
+    return $abs
+}
+
+# Resolve a vault.db read address (config may hold a same-level relative address like
+# .\personal data) into an absolute path; return $null if it cannot be resolved.
+function Expand-VaultDir([string]$saved) {
+    if (-not $saved) { return $null }
+    $saved = $saved.Trim().Trim('"', "'").Trim()
+    if ($saved -eq '.' -or $saved -eq '.\') { return $root }
+    if ($saved.StartsWith('.\')) {
+        return [System.IO.Path]::GetFullPath((Join-Path $root ($saved.Substring(2))))
+    }
+    if ([System.IO.Path]::IsPathRooted($saved)) {
+        return [System.IO.Path]::GetFullPath($saved)
+    }
+    return $null
+}
+
 # When no exe is present, first try to download the windows/amd64 prebuilt from
 # GitHub Releases. Returns $true on success, $false on failure (caller then
 # falls back to building from source).
@@ -118,9 +147,15 @@ function Offer-KeyRelocate([string]$Key, [string]$VaultDir, [string]$Exe) {
         return $Key
     }
 
-    $target = Read-Host 'Destination absolute path (e.g. D:\keys\secret.key)'
+    $target = Read-Host 'Destination absolute path (dir or full secret.key path, e.g. E:\keys\secret.key)'
     $target = $target.Trim().Trim('"', "'").Trim()
     if (-not $target) { Write-Host 'No path given, skipping the move.' -ForegroundColor Yellow; return $Key }
+    # If the input looks like a directory (already exists, or has no file extension),
+    # append the default file name secret.key.
+    if ([System.IO.Directory]::Exists($target) -or -not [System.IO.Path]::GetExtension($target)) {
+        $target = Join-Path $target 'secret.key'
+        Write-Host "  Target looks like a directory; completed as: $target" -ForegroundColor Cyan
+    }
     if ([string]::Equals((Split-Path -Parent $target).TrimEnd('\'), $VaultDir.TrimEnd('\'), [System.StringComparison]::OrdinalIgnoreCase)) {
         Write-Host 'Destination must not be inside the data directory, skipping.' -ForegroundColor Yellow
         return $Key
@@ -236,19 +271,30 @@ try {
     # (e.g. .\omnitest). Set it as a process-level env var so the exe child
     # processes launched below inherit the same directory (key and vault stay
     # together).
-    # vault.db read address: -VaultDir > existing env var > last remembered config > default.
-    # After resolving, save it back so future runs reuse the same read address.
+    # vault.db read address is anchored to this script's own directory. The default is
+    # "personal data" at the same level as the ps1 (first locate the ps1 folder, then
+    # its sibling "personal data"), and it does NOT inherit an external VAULT_DIR.
+    # Only an explicit -VaultDir, or a previously remembered custom (non-default) dir,
+    # overrides it.
     $vaultDir = $null
     if ($VaultDir) {
-        $vaultDir = [System.IO.Path]::GetFullPath($VaultDir.Trim().Trim('"', "'"))
-    }
-    if (-not $vaultDir -and -not $env:VAULT_DIR) {
-        $vaultDir = Read-SavedVaultDir
+        $vaultDir = Expand-VaultDir $VaultDir
+        if (-not $vaultDir) { $vaultDir = [System.IO.Path]::GetFullPath($VaultDir.Trim().Trim('"', "'")) }
     }
     if (-not $vaultDir) {
-        $vaultDir = if ($env:VAULT_DIR) { $env:VAULT_DIR } else { Join-Path $root 'personal data' }
+        # Only a same-level relative custom dir (.\xxx) is reused; foreign absolute
+        # paths are ignored, so we always anchor to the ps1-relative sibling default.
+        $cached = Read-SavedVaultDir
+        if ($cached -and $cached.StartsWith('.\')) { $vaultDir = Expand-VaultDir $cached }
     }
-    Save-VaultDir $vaultDir
+    if (-not $vaultDir) {
+        $vaultDir = Join-Path $root 'personal data'
+    }
+    $vaultDir = [System.IO.Path]::GetFullPath($vaultDir)
+    # Persist and display the same-level relative address (.\personal data); keep the
+    # absolute path for the runtime env var so resolution never depends on the CWD.
+    $vaultDirDisplay = To-RelativeVaultDir $vaultDir
+    Save-VaultDir $vaultDirDisplay
     $env:VAULT_DIR = $vaultDir
     $freshEnv = -not (Test-Path (Join-Path $vaultDir 'vault.db'))
 
@@ -260,7 +306,9 @@ try {
     if (-not $freshEnv) {
         Write-Host ''
         Write-Host 'Detected an existing vault (not a fresh environment).' -ForegroundColor Yellow
-        Write-Host "Data directory: $vaultDir"
+        Write-Host "Data directory (same-level relative $vaultDirDisplay; resolved to $vaultDir):"
+        Write-Host "  vault.db read address : $(Join-Path $vaultDirDisplay 'vault.db')"
+        Write-Host "  secret.key read address: $(Join-Path $vaultDirDisplay 'secret.key')"
         Write-Host 'For a fresh setup, clear the data directory above or set a dedicated VAULT_DIR (see note at top).' -ForegroundColor Yellow
         Write-Host ''
     }
@@ -271,7 +319,10 @@ try {
         Write-Host '  Note this key on screen and back it up somewhere safe (see docs/usage.md).'
         Write-Host ''
         if (-not $NoStart) {
-            Start-Process -FilePath $exe -WorkingDirectory $root | Out-Null
+            # -WindowStyle Hidden: the exe is a console program, so a plain Start-Process would
+            # pop up an extra console window. Hide it to avoid a confusing second window;
+            # only the WebView2 main window remains.
+            Start-Process -FilePath $exe -WorkingDirectory $root -WindowStyle Hidden | Out-Null
             Write-Step 'OmniVault launched (runs independently; the script does not wait for it to close).'
             Write-Host 'In the window that opens, create a new vault: set an initial password and write down the secret.key shown on screen for safekeeping.' -ForegroundColor Yellow
             Write-Host 'The vault is only actually created once you finish this step - only then is initialization complete.' -ForegroundColor Yellow
@@ -284,8 +335,8 @@ try {
         Create-DesktopShortcut -Exe $exe -Root $root
         Write-Host ''
         Write-Step 'Data & key locations'
-        Write-Host "  Vault database : $(Join-Path $vaultDir 'vault.db')"
-        Write-Host "  Secret key     : $(Join-Path $vaultDir 'secret.key')"
+        Write-Host "  Vault database : $(Join-Path $vaultDirDisplay 'vault.db')"
+        Write-Host "  Secret key     : $(Join-Path $vaultDirDisplay 'secret.key')"
         Write-Host ''
         Write-Host 'Tip: to move the key to a safe external location (USB/encrypted drive),' -ForegroundColor Yellow
         Write-Host '      close the app, then run this script again and follow the prompts.' -ForegroundColor Yellow
@@ -294,7 +345,7 @@ try {
     }
 
     # ---------- 4. Resolve secret.key read address ----------
-    # Priority: -KeyPath > env var > DPAPI-remembered > interactive input
+    # Priority: -KeyPath > env var > DPAPI-remembered > default secret.key in data dir
     $key = $null
     if ($KeyPath) {
         $KeyPath = $KeyPath.Trim().Trim('"', "'")
@@ -317,28 +368,42 @@ try {
     }
 
     # Validate the final key read address really exists. If a remembered path is
-    # stale/deleted (e.g. old credential-manager record), clear it and fall back to
-    # the interactive prompt below, so "key remember" does not crash the script.
+    # stale/deleted (e.g. old credential-manager record), clear it and fall back
+    # below, so "key remember" does not crash the script.
     if ($key -and -not (Test-Path -LiteralPath $key -PathType Leaf)) {
         Write-Host "Warning: secret.key read address is invalid ($key); clearing the remembered entry." -ForegroundColor Yellow
         & $exe 'key' 'forget' 2>$null | Out-Null
         $key = $null
     }
 
+    # If the data dir already holds the default secret.key (the app generates it there
+    # on first run), use it directly without forcing the user to type a path.
+    $legacyKey = Join-Path $vaultDir 'secret.key'
+    if (-not $key -and (Test-Path -LiteralPath $legacyKey -PathType Leaf)) {
+        $key = $legacyKey
+        Write-Step "Data dir already has secret.key; using read address: $(Join-Path $vaultDirDisplay 'secret.key')"
+        & $exe 'key' 'remember' $key 2>$null | Out-Null
+    }
+
     if (-not $key) {
-        Write-Step 'First save secret.key somewhere safe, then give its path'
-        Write-Host '  secret.key is your encryption key. Do not keep it in the project'
-        Write-Host '  or your document folders. Save it to a location you consider safe'
-        Write-Host '  (e.g. a USB drive or a private encrypted folder, separate from the'
-        Write-Host '  app and the data), then enter its full path below.'
+        # Remind, do not force. Entering a path sets and remembers it; pressing Enter
+        # skips and lets you set it on a later run. Never blocks first/repeated launch.
+        Write-Step 'No secret.key found yet.'
+        Write-Host '  secret.key is your encryption key. Keep it somewhere safe (USB drive / private'
+        Write-Host '  encrypted folder, separate from the app and data).'
+        Write-Host '  Provide its path now, or press Enter to skip and set it on a later run.'
         Write-Host ''
-        $input = Read-Host 'Absolute path of secret.key (e.g. D:\keys\secret.key)'
-        $input = $input.Trim()
-        if (-not $input) { throw 'No path entered, cannot continue.' }
-        if (-not (Test-Path -LiteralPath $input -PathType Leaf)) {
-            throw "Path does not exist or is not accessible: $input"
+        $input = (Read-Host 'Full path of secret.key (Enter to skip)').Trim()
+        if ($input) {
+            if (-not (Test-Path -LiteralPath $input -PathType Leaf)) {
+                Write-Host "Skipped: path does not exist or is not accessible ($input); not launching. Rerun later to set it." -ForegroundColor Yellow
+                Pause-Exit 0
+            }
+            $key = $input
+        } else {
+            Write-Host 'Skipped key setup. To launch, rerun this script and provide the secret.key path.' -ForegroundColor Yellow
+            Pause-Exit 0
         }
-        $key = $input
     }
 
     # ---------- 5. Remember path + desktop shortcut ----------
@@ -364,7 +429,7 @@ try {
 
     Write-Host ''
     Write-Step 'Data & key locations (this script can re-set them)'
-    Write-Host "  vault.db read address : $(Join-Path $vaultDir 'vault.db')"
+    Write-Host "  vault.db read address : $(Join-Path $vaultDirDisplay 'vault.db')"
     Write-Host "  secret.key read address: $key"
     Write-Host ''
     Write-Host 'To change the read addresses, rerun with flags:' -ForegroundColor Yellow

@@ -65,6 +65,35 @@ function Save-VaultDir([string]$dir) {
     }
 }
 
+# 把绝对路径转成“同级相对地址”：位于脚本目录下时显示为 .\…（如 .\personal data），
+# 其余情况原样返回。用于展示与写回配置文件的一致、可读的相对地址。
+function To-RelativeVaultDir([string]$abs) {
+    if (-not $abs) { return $abs }
+    $abs = $abs.Trim()
+    $rootTrim = $root.TrimEnd('\')
+    if ($abs.TrimEnd('\') -ieq $rootTrim) { return '.\' }
+    $prefix = $rootTrim + '\'
+    if ($abs.ToLowerInvariant().StartsWith($prefix.ToLowerInvariant())) {
+        return '.\' + $abs.Substring($prefix.Length)
+    }
+    return $abs
+}
+
+# 解析 vault.db 读取地址（配置文件里可能是 .\personal data 等相对同级地址），
+# 统一转为绝对路径返回；无法解析返回 $null。
+function Expand-VaultDir([string]$saved) {
+    if (-not $saved) { return $null }
+    $saved = $saved.Trim().Trim('"', "'").Trim()
+    if ($saved -eq '.' -or $saved -eq '.\') { return $root }
+    if ($saved.StartsWith('.\')) {
+        return [System.IO.Path]::GetFullPath((Join-Path $root ($saved.Substring(2))))
+    }
+    if ([System.IO.Path]::IsPathRooted($saved)) {
+        return [System.IO.Path]::GetFullPath($saved)
+    }
+    return $null
+}
+
 # 当本目录没有现成 exe 时，优先从 GitHub Releases 下载 windows/amd64 预编译版；
 # 成功返回 $true，失败返回 $false（调用方再回退到源码编译）。
 function Get-ReleaseExe {
@@ -113,9 +142,14 @@ function Offer-KeyRelocate([string]$Key, [string]$VaultDir, [string]$Exe) {
         return $Key
     }
 
-    $target = Read-Host '目标绝对路径（例如 D:\keys\secret.key）'
+    $target = Read-Host '目标绝对路径（目录或 secret.key 完整路径，例如 E:\keys\secret.key）'
     $target = $target.Trim().Trim('"', "'").Trim()
     if (-not $target) { Write-Host '未输入路径，取消移动。' -ForegroundColor Yellow; return $Key }
+    # 若输入的是目录（已存在）或无扩展名（如 E:\keys\老笔记本），自动补上默认文件名 secret.key。
+    if ([System.IO.Directory]::Exists($target) -or -not [System.IO.Path]::GetExtension($target)) {
+        $target = Join-Path $target 'secret.key'
+        Write-Host "  目标为目录/未含文件名，已补全为：$target" -ForegroundColor Cyan
+    }
     if ([string]::Equals((Split-Path -Parent $target).TrimEnd('\'), $VaultDir.TrimEnd('\'), [System.StringComparison]::OrdinalIgnoreCase)) {
         Write-Host '目标不能仍在数据目录内，取消移动。' -ForegroundColor Yellow
         return $Key
@@ -228,21 +262,28 @@ try {
 
     # ---------- 3.5 自动感知全新环境 ----------
     # 数据目录默认放在本程序文件夹下的 "personal data"，不再使用 ~\.omnivault。
-    # 也可用环境变量 VAULT_DIR 覆盖到任意空目录（如 .\omnitest）。设为进程级环境
-    # 变量，这样下面启动的 exe 子进程会继承同一目录，键和库始终落在同处。
-    # vault.db 读取地址：命令行 -VaultDir > 已有环境变量 > 上次记住的配置 > 默认目录。
-    # 解析后写回配置文件，供“重复使用”时沿用同一读取地址。
+    # 也可用 -VaultDir 覆盖到任意目录（或 .\相对目录）。设为进程级环境变量给子进程。
+    # vault.db 读取地址：以“本脚本自身目录”为基准。默认取同级的 personal data
+    # （即先确定 ps1 自身地址，再找其同级的 personal data），不继承外部 VAULT_DIR。
+    # 仅当显式传 -VaultDir，或上次记住过自定义目录（非默认）时才覆盖。
     $vaultDir = $null
     if ($VaultDir) {
-        $vaultDir = [System.IO.Path]::GetFullPath($VaultDir.Trim().Trim('"', "'"))
-    }
-    if (-not $vaultDir -and -not $env:VAULT_DIR) {
-        $vaultDir = Read-SavedVaultDir
+        $vaultDir = Expand-VaultDir $VaultDir
+        if (-not $vaultDir) { $vaultDir = [System.IO.Path]::GetFullPath($VaultDir.Trim().Trim('"', "'")) }
     }
     if (-not $vaultDir) {
-        $vaultDir = if ($env:VAULT_DIR) { $env:VAULT_DIR } else { Join-Path $root 'personal data' }
+        # 只有“相对同级”的自定义目录（.\xxx）才会被复用；外来绝对路径一律忽略，
+        # 从而始终锚定到 ps1 自身目录的同级默认。
+        $cached = Read-SavedVaultDir
+        if ($cached -and $cached.StartsWith('.\')) { $vaultDir = Expand-VaultDir $cached }
     }
-    Save-VaultDir $vaultDir
+    if (-not $vaultDir) {
+        $vaultDir = Join-Path $root 'personal data'
+    }
+    $vaultDir = [System.IO.Path]::GetFullPath($vaultDir)
+    # 写回配置文件与展示时使用同级相对地址（如 .\personal data），运行时仍用绝对路径。
+    $vaultDirDisplay = To-RelativeVaultDir $vaultDir
+    Save-VaultDir $vaultDirDisplay
     $env:VAULT_DIR = $vaultDir
     $freshEnv = -not (Test-Path (Join-Path $vaultDir 'vault.db'))
 
@@ -253,7 +294,9 @@ try {
     if (-not $freshEnv) {
         Write-Host ''
         Write-Host '检测到已存在档案库（非全新环境）。' -ForegroundColor Yellow
-        Write-Host "数据目录：$vaultDir"
+        Write-Host "数据目录（同级相对地址 $vaultDirDisplay，解析后为 $vaultDir）：" 
+        Write-Host "  档案库(vault.db)读取地址：$(Join-Path $vaultDirDisplay 'vault.db')"
+        Write-Host "  密钥(secret.key)读取地址：$(Join-Path $vaultDirDisplay 'secret.key')"
         Write-Host '若你想全新创建，请清空上面的数据目录，或设置独立的 VAULT_DIR（详见脚本顶部说明）。' -ForegroundColor Yellow
         Write-Host ''
     }
@@ -264,7 +307,9 @@ try {
         Write-Host '  请在界面上记下这把密钥，并备份到安全位置（见 docs/usage.md）。'
         Write-Host ''
         if (-not $NoStart) {
-            Start-Process -FilePath $exe -WorkingDirectory $root | Out-Null
+            # -WindowStyle Hidden：exe 是控制台程序，直接 Start-Process 会多弹一个
+            # 控制台窗口，这里隐藏，避免“英文版自动运行”的错觉，只保留 WebView2 主界面。
+            Start-Process -FilePath $exe -WorkingDirectory $root -WindowStyle Hidden | Out-Null
             Write-Step 'OmniVault 已启动（独立运行，脚本无需等待其关闭）。'
             Write-Host '请在打开的窗口中新建一个档案：设置初始密码，并抄下界面展示的 secret.key 备份到安全位置。' -ForegroundColor Yellow
             Write-Host '必须完成这一步，档案库才正式生成，初始化才算完成。' -ForegroundColor Yellow
@@ -277,8 +322,8 @@ try {
         Create-DesktopShortcut -Exe $exe -Root $root
         Write-Host ''
         Write-Step '数据与密钥位置'
-        Write-Host "  档案库(vault.db) : $(Join-Path $vaultDir 'vault.db')"
-        Write-Host "  密钥(secret.key) : $(Join-Path $vaultDir 'secret.key')"
+        Write-Host "  档案库(vault.db) : $(Join-Path $vaultDirDisplay 'vault.db')"
+        Write-Host "  密钥(secret.key) : $(Join-Path $vaultDirDisplay 'secret.key')"
         Write-Host ''
         Write-Host '提示：如需把密钥移到安全的外部位置（U盘/加密盘），' -ForegroundColor Yellow
         Write-Host '      请关闭程序后，再次运行本脚本，并按提示移动密钥。' -ForegroundColor Yellow
@@ -287,7 +332,7 @@ try {
     }
 
     # ---------- 4. 确定 secret.key 读取地址 ----------
-    # 优先级：-KeyPath > 环境变量 > DPAPI 记住 > 交互输入
+    # 优先级：-KeyPath > 环境变量 > DPAPI 记住 > 数据目录内默认 secret.key
     $key = $null
     if ($KeyPath) {
         $KeyPath = $KeyPath.Trim().Trim('"', "'")
@@ -310,26 +355,39 @@ try {
     }
 
     # 校验最终密钥读取地址是否真实存在。若记住了但文件已被删除/移动（如陈旧的
-    # 凭据管理器记录），先清除该记录，再走下方交互询问，避免 key remember 报错闪退。
+    # 凭据管理器记录），先清除该记录，再走下方回收判断，避免 key remember 报错闪退。
     if ($key -and -not (Test-Path -LiteralPath $key -PathType Leaf)) {
         Write-Host "警告：密钥读取地址已失效（$key），正在清除该记住记录。" -ForegroundColor Yellow
         & $exe 'key' 'forget' 2>$null | Out-Null
         $key = $null
     }
 
+    # 数据目录里若已有默认 secret.key（首跑时程序会在此生成），直接使用，不强制填写。
+    $legacyKey = Join-Path $vaultDir 'secret.key'
+    if (-not $key -and (Test-Path -LiteralPath $legacyKey -PathType Leaf)) {
+        $key = $legacyKey
+        Write-Step "数据目录已包含 secret.key，直接使用读取地址：$(Join-Path $vaultDirDisplay 'secret.key')"
+        & $exe 'key' 'remember' $key 2>$null | Out-Null
+    }
+
     if (-not $key) {
-        Write-Step '请先确定 secret.key 的存放位置，再告知路径'
-        Write-Host '  secret.key 是加密密钥，请不要放在项目/文档库等地方。'
-        Write-Host '  请先把它保存到你自己认为安全的位置（如 U 盘、私人加密目录，'
-        Write-Host '  与程序和资料库分开存放），然后再把它的完整路径输入下方。'
+        # 尚未定位到密钥：提醒到位但不强制。输入路径即设置并记住；直接回车可跳过，
+        # 留待之后再次运行本脚本设置，绝不阻塞首次/多次启动。
+        Write-Step '尚未找到 secret.key。'
+        Write-Host '  secret.key 是加密密钥，请保存在安全位置（U 盘/私人加密目录，与程序分开）。'
+        Write-Host '  可现在就告知路径，也可直接回车跳过，之后再运行本脚本设置。'
         Write-Host ''
-        $input = Read-Host 'secret.key 的绝对路径（例如 D:\keys\secret.key）'
-        $input = $input.Trim()
-        if (-not $input) { throw '未输入路径，无法继续。' }
-        if (-not (Test-Path -LiteralPath $input -PathType Leaf)) {
-            throw "路径不存在或无权限访问：$input"
+        $input = (Read-Host '输入 secret.key 完整路径（直接回车跳过）').Trim()
+        if ($input) {
+            if (-not (Test-Path -LiteralPath $input -PathType Leaf)) {
+                Write-Host "跳过：路径不存在或无权限访问（$input），本次不启动。之后可再次运行本脚本设置。" -ForegroundColor Yellow
+                Pause-Exit 0
+            }
+            $key = $input
+        } else {
+            Write-Host '已跳过密钥设置。需要启动时，请再次运行本脚本并按要求提供 secret.key 路径。' -ForegroundColor Yellow
+            Pause-Exit 0
         }
-        $key = $input
     }
 
     # ---------- 5. 记住路径 + 桌面快捷方式 ----------
@@ -355,7 +413,7 @@ try {
 
     Write-Host ''
     Write-Step '数据与密钥位置（本脚本可重复设置）'
-    Write-Host "  档案库(vault.db)读取地址 : $(Join-Path $vaultDir 'vault.db')"
+    Write-Host "  档案库(vault.db)读取地址 : $(Join-Path $vaultDirDisplay 'vault.db')"
     Write-Host "  密钥(secret.key)读取地址  : $key"
     Write-Host ''
     Write-Host '如需修改读取地址，再次运行本脚本并指定参数即可：' -ForegroundColor Yellow
