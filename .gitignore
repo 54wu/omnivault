@@ -12,6 +12,8 @@ omnivault.exe
 # Local vault data directory (secret.key, vault.db, ui-data, backups)
 personal data/
 .session
+# Reusable launcher config: remembers the vault.db read address (directory path only)
+omnivault.config
 *.enc
 docs/brainstorms/
 docs/plans/

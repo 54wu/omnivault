@@ -17,6 +17,8 @@
     首次使用.ps1                    # 启动（无 exe 时自动构建）
     首次使用.ps1 -NoStart           # 只构建+配置，不启动
     首次使用.ps1 -SkipIcon          # 构建时跳过图标资源，仅生成裸 exe
+    首次使用.ps1 -VaultDir <路径>    # 设置 vault.db 的读取地址（目录），会记住供重复使用
+    首次使用.ps1 -KeyPath <路径>     # 设置 secret.key 的读取地址（文件），会记住供重复使用
 .NOTES
     本脚本不把 key 或路径写入 vault 文件夹；生成的 exe 与本脚本同目录。
     本脚本会自动感知全新环境：若 ~/.omnivault（或 VAULT_DIR）还没有 vault.db，
@@ -26,7 +28,9 @@
 
 param(
     [switch]$SkipIcon,   # 跳过图标资源嵌入（仅生成裸 exe）
-    [switch]$NoStart     # 只构建+配置，不自动启动
+    [switch]$NoStart,    # 只构建+配置，不自动启动
+    [string]$VaultDir,   # 设置 vault.db 的读取地址（目录）；会被记住，供重复使用
+    [string]$KeyPath     # 设置 secret.key 的读取地址（文件）；会被记住，供重复使用
 )
 
 # 让双击/运行遇错时停留在窗口，而不是一闪而过。
@@ -38,6 +42,27 @@ function Pause-Exit([int]$code = 1) {
     Write-Host ''
     # 不再显示提示语，也不要求按键：窗口保持打开方便复制，由用户手动关闭。
     while ($true) { Start-Sleep -Milliseconds 500 }
+}
+
+# vault.db 读取地址持久化文件（本脚本同目录；只存目录路径，不含密钥）。
+$cfgFile = Join-Path $PSScriptRoot 'omnivault.config'
+
+# 读取上次记住的 vault.db 读取目录；没有则返回 $null。
+function Read-SavedVaultDir {
+    if (Test-Path -LiteralPath $cfgFile) {
+        try { return ([System.IO.File]::ReadAllText($cfgFile)).Trim() } catch {}
+    }
+    return $null
+}
+
+# 记住 vault.db 读取目录（无 BOM 写入，避免路径前混入不可见字符）。
+function Save-VaultDir([string]$dir) {
+    if (-not $dir) { return }
+    try {
+        [System.IO.File]::WriteAllText($cfgFile, $dir.Trim(), (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Write-Host "警告：未能保存 vault.db 路径配置：$_" -ForegroundColor Yellow
+    }
 }
 
 # 当本目录没有现成 exe 时，优先从 GitHub Releases 下载 windows/amd64 预编译版；
@@ -205,7 +230,19 @@ try {
     # 数据目录默认放在本程序文件夹下的 "personal data"，不再使用 ~\.omnivault。
     # 也可用环境变量 VAULT_DIR 覆盖到任意空目录（如 .\omnitest）。设为进程级环境
     # 变量，这样下面启动的 exe 子进程会继承同一目录，键和库始终落在同处。
-    $vaultDir = if ($env:VAULT_DIR) { $env:VAULT_DIR } else { Join-Path $root 'personal data' }
+    # vault.db 读取地址：命令行 -VaultDir > 已有环境变量 > 上次记住的配置 > 默认目录。
+    # 解析后写回配置文件，供“重复使用”时沿用同一读取地址。
+    $vaultDir = $null
+    if ($VaultDir) {
+        $vaultDir = [System.IO.Path]::GetFullPath($VaultDir.Trim().Trim('"', "'"))
+    }
+    if (-not $vaultDir -and -not $env:VAULT_DIR) {
+        $vaultDir = Read-SavedVaultDir
+    }
+    if (-not $vaultDir) {
+        $vaultDir = if ($env:VAULT_DIR) { $env:VAULT_DIR } else { Join-Path $root 'personal data' }
+    }
+    Save-VaultDir $vaultDir
     $env:VAULT_DIR = $vaultDir
     $freshEnv = -not (Test-Path (Join-Path $vaultDir 'vault.db'))
 
@@ -249,18 +286,35 @@ try {
         Pause-Exit 0
     }
 
-    # ---------- 4. 确定 secret.key 路径 ----------
-    # 优先级：环境变量 > DPAPI 记住 > 交互输入
+    # ---------- 4. 确定 secret.key 读取地址 ----------
+    # 优先级：-KeyPath > 环境变量 > DPAPI 记住 > 交互输入
     $key = $null
-    if ($env:OVAULT_KEY_PATH) {
+    if ($KeyPath) {
+        $KeyPath = $KeyPath.Trim().Trim('"', "'")
+        if (Test-Path -LiteralPath $KeyPath -PathType Leaf) {
+            $key = $KeyPath
+            Write-Step "按 -KeyPath 使用 secret.key 读取地址：$key"
+        } else {
+            Write-Host "警告：-KeyPath 指向的文件不存在（$KeyPath），改用其他方式定位密钥。" -ForegroundColor Yellow
+        }
+    }
+    if (-not $key -and $env:OVAULT_KEY_PATH) {
         $key = $env:OVAULT_KEY_PATH
-    } else {
+    } elseif (-not $key) {
         try {
             $where = & $exe 'key' 'where' 2>$null
             if ($LASTEXITCODE -eq 0 -and $where -and $where -notmatch '找不到') {
                 $key = $where
             }
         } catch { $key = $null }
+    }
+
+    # 校验最终密钥读取地址是否真实存在。若记住了但文件已被删除/移动（如陈旧的
+    # 凭据管理器记录），先清除该记录，再走下方交互询问，避免 key remember 报错闪退。
+    if ($key -and -not (Test-Path -LiteralPath $key -PathType Leaf)) {
+        Write-Host "警告：密钥读取地址已失效（$key），正在清除该记住记录。" -ForegroundColor Yellow
+        & $exe 'key' 'forget' 2>$null | Out-Null
+        $key = $null
     }
 
     if (-not $key) {
@@ -300,11 +354,13 @@ try {
     }
 
     Write-Host ''
-    Write-Step '数据与密钥位置'
-    Write-Host "  档案库(vault.db) : $(Join-Path $vaultDir 'vault.db')"
-    Write-Host "  密钥(secret.key) : $key"
+    Write-Step '数据与密钥位置（本脚本可重复设置）'
+    Write-Host "  档案库(vault.db)读取地址 : $(Join-Path $vaultDir 'vault.db')"
+    Write-Host "  密钥(secret.key)读取地址  : $key"
     Write-Host ''
-    Write-Host '提示：如需再次移动密钥位置，请再次运行本脚本，并按提示操作。' -ForegroundColor Yellow
+    Write-Host '如需修改读取地址，再次运行本脚本并指定参数即可：' -ForegroundColor Yellow
+    Write-Host '  首次使用.ps1 -VaultDir <vault.db所在目录>      # 修改 vault.db 读取地址' -ForegroundColor Yellow
+    Write-Host '  首次使用.ps1 -KeyPath <secret.key完整路径>     # 修改 secret.key 读取地址' -ForegroundColor Yellow
     Write-Host ''
     Write-Host '完成。' -ForegroundColor Green
     Pause-Exit 0

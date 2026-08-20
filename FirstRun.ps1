@@ -19,6 +19,8 @@
     FirstRun.ps1               # launch (auto-build when the exe is missing)
     FirstRun.ps1 -NoStart      # build/configure only, do not launch
     FirstRun.ps1 -SkipIcon     # skip icon resource, build a bare exe
+    FirstRun.ps1 -VaultDir <path>  # set the vault.db read address (dir), remembered for reuse
+    FirstRun.ps1 -KeyPath <path>   # set the secret.key read address (file), remembered for reuse
 .NOTES
     This script never writes the key or its path into the vault folder. The
     built exe is placed next to this script.
@@ -31,7 +33,9 @@
 
 param(
     [switch]$SkipIcon,   # Skip icon resource embedding (build a bare exe)
-    [switch]$NoStart     # Build/configure only, do not auto-launch
+    [switch]$NoStart,    # Build/configure only, do not auto-launch
+    [string]$VaultDir,   # Set the vault.db read address (dir); remembered for reuse
+    [string]$KeyPath     # Set the secret.key read address (file); remembered for reuse
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,6 +45,27 @@ function Pause-Exit([int]$code = 1) {
     Write-Host ''
     # No message and no keypress: window stays open for copying; user closes it manually.
     while ($true) { Start-Sleep -Milliseconds 500 }
+}
+
+# Persisted vault.db read address (next to this script; stores a directory path only).
+$cfgFile = Join-Path $PSScriptRoot 'omnivault.config'
+
+# Return the previously remembered vault.db read directory, or $null.
+function Read-SavedVaultDir {
+    if (Test-Path -LiteralPath $cfgFile) {
+        try { return ([System.IO.File]::ReadAllText($cfgFile)).Trim() } catch {}
+    }
+    return $null
+}
+
+# Remember the vault.db read directory (written without BOM to avoid invisible leading bytes).
+function Save-VaultDir([string]$dir) {
+    if (-not $dir) { return }
+    try {
+        [System.IO.File]::WriteAllText($cfgFile, $dir.Trim(), (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        Write-Host "Warning: could not save vault.db path config: $_" -ForegroundColor Yellow
+    }
 }
 
 # When no exe is present, first try to download the windows/amd64 prebuilt from
@@ -211,7 +236,19 @@ try {
     # (e.g. .\omnitest). Set it as a process-level env var so the exe child
     # processes launched below inherit the same directory (key and vault stay
     # together).
-    $vaultDir = if ($env:VAULT_DIR) { $env:VAULT_DIR } else { Join-Path $root 'personal data' }
+    # vault.db read address: -VaultDir > existing env var > last remembered config > default.
+    # After resolving, save it back so future runs reuse the same read address.
+    $vaultDir = $null
+    if ($VaultDir) {
+        $vaultDir = [System.IO.Path]::GetFullPath($VaultDir.Trim().Trim('"', "'"))
+    }
+    if (-not $vaultDir -and -not $env:VAULT_DIR) {
+        $vaultDir = Read-SavedVaultDir
+    }
+    if (-not $vaultDir) {
+        $vaultDir = if ($env:VAULT_DIR) { $env:VAULT_DIR } else { Join-Path $root 'personal data' }
+    }
+    Save-VaultDir $vaultDir
     $env:VAULT_DIR = $vaultDir
     $freshEnv = -not (Test-Path (Join-Path $vaultDir 'vault.db'))
 
@@ -256,17 +293,36 @@ try {
         Pause-Exit 0
     }
 
-    # ---------- 4. Resolve secret.key path ----------
+    # ---------- 4. Resolve secret.key read address ----------
+    # Priority: -KeyPath > env var > DPAPI-remembered > interactive input
     $key = $null
-    if ($env:OVAULT_KEY_PATH) {
+    if ($KeyPath) {
+        $KeyPath = $KeyPath.Trim().Trim('"', "'")
+        if (Test-Path -LiteralPath $KeyPath -PathType Leaf) {
+            $key = $KeyPath
+            Write-Step "Using secret.key read address from -KeyPath: $key"
+        } else {
+            Write-Host "Warning: -KeyPath file not found ($KeyPath); falling back to other lookup methods." -ForegroundColor Yellow
+        }
+    }
+    if (-not $key -and $env:OVAULT_KEY_PATH) {
         $key = $env:OVAULT_KEY_PATH
-    } else {
+    } elseif (-not $key) {
         try {
             $where = & $exe 'key' 'where' 2>$null
             if ($LASTEXITCODE -eq 0 -and $where -and $where -notmatch 'not found|find|找不到') {
                 $key = $where
             }
         } catch { $key = $null }
+    }
+
+    # Validate the final key read address really exists. If a remembered path is
+    # stale/deleted (e.g. old credential-manager record), clear it and fall back to
+    # the interactive prompt below, so "key remember" does not crash the script.
+    if ($key -and -not (Test-Path -LiteralPath $key -PathType Leaf)) {
+        Write-Host "Warning: secret.key read address is invalid ($key); clearing the remembered entry." -ForegroundColor Yellow
+        & $exe 'key' 'forget' 2>$null | Out-Null
+        $key = $null
     }
 
     if (-not $key) {
@@ -307,11 +363,13 @@ try {
     }
 
     Write-Host ''
-    Write-Step 'Data & key locations'
-    Write-Host "  Vault database : $(Join-Path $vaultDir 'vault.db')"
-    Write-Host "  Secret key     : $key"
+    Write-Step 'Data & key locations (this script can re-set them)'
+    Write-Host "  vault.db read address : $(Join-Path $vaultDir 'vault.db')"
+    Write-Host "  secret.key read address: $key"
     Write-Host ''
-    Write-Host 'Tip: to move the key location again, run this script again and follow the prompts.' -ForegroundColor Yellow
+    Write-Host 'To change the read addresses, rerun with flags:' -ForegroundColor Yellow
+    Write-Host '  FirstRun.ps1 -VaultDir <dir containing vault.db>  # change vault.db read address' -ForegroundColor Yellow
+    Write-Host '  FirstRun.ps1 -KeyPath <full path to secret.key>  # change secret.key read address' -ForegroundColor Yellow
     Write-Host ''
     Write-Host 'Done.' -ForegroundColor Green
     Pause-Exit 0
